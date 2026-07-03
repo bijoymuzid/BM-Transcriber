@@ -33,7 +33,7 @@ def send_contact_notification(contact) -> None:
     from flask_mail import Message
     from extensions import mail
 
-    admin_email = os.getenv("MAIL_USERNAME", "niabijoy123@gmail.com")
+    admin_email = os.getenv("MAIL_USERNAME", "")
 
     msg = Message(
         subject=f"[Contact Form] {contact.subject or 'No Subject'}",
