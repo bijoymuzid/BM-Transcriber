@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login — BM Transcriber{% endblock %}
+{% block content %}
+<div class="premium-form-card premium-fade-in">
+  <div class="premium-card premium-card-glow" style="padding:2rem">
+    <h1 class="premium-heading-md" style="text-align:center;margin-bottom:1.5rem">Log In</h1>
+    <form method="POST" action="{{ url_for('auth.login') }}" id="login-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="premium-form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="email" class="premium-input" placeholder="you@example.com">
+      </div>
+      <div class="premium-form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" class="premium-input" placeholder="••••••••">
+      </div>
+      <button type="submit" class="premium-btn premium-btn-primary premium-btn-block" style="margin-top:0.5rem">Log In</button>
+    </form>
+    <p class="premium-text-muted premium-text-center" style="margin-top:1.25rem;font-size:0.85rem">
+      Don't have an account? <a href="{{ url_for('auth.register') }}" style="color:var(--p-text-accent);text-decoration:none;font-weight:600">Register</a>
+    </p>
+    <hr class="premium-divider">
+    <p class="premium-text-center" style="font-size:0.8rem;color:var(--p-text-muted)">
+      Locked out? <a href="{{ url_for('auth.request_unlock') }}" style="color:#fca5a5;text-decoration:none;font-weight:500">Request Unlock</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

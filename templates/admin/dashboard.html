@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — BM Transcriber{% endblock %}
+{% block content %}
+
+<h1 class="premium-heading-md premium-fade-in">Admin Dashboard</h1>
+
+<!-- Stat Cards -->
+<div class="premium-stats-grid premium-fade-in premium-fade-in-delay-1">
+  <div class="premium-stat-card bar-violet">
+    <div class="stat-label">Total Users</div>
+    <div class="stat-value violet">{{ total_users }}</div>
+  </div>
+  <div class="premium-stat-card bar-red">
+    <div class="stat-label">Locked</div>
+    <div class="stat-value red">{{ locked_users }}</div>
+  </div>
+  <div class="premium-stat-card bar-blue">
+    <div class="stat-label">Unlock Requests</div>
+    <div class="stat-value blue">{{ pending_requests }}</div>
+  </div>
+  <div class="premium-stat-card bar-green">
+    <div class="stat-label">Unread Messages</div>
+    <div class="stat-value green">{{ unread_messages }}</div>
+  </div>
+</div>
+
+{% if locked_users > 0 or pending_requests > 0 %}
+<div class="premium-alert premium-fade-in premium-fade-in-delay-2">
+  <span class="premium-alert-icon">🔒</span>
+  <span class="premium-alert-text">
+    {{ locked_users }} locked account(s)
+    {% if pending_requests > 0 %}&middot; {{ pending_requests }} pending unlock request(s){% endif %}
+  </span>
+  <a href="{{ url_for('auth.admin_unlock_requests') }}" class="premium-alert-action">Manage &rarr;</a>
+</div>
+{% endif %}
+
+<!-- Server Config Status -->
+<div class="premium-config-grid premium-fade-in premium-fade-in-delay-2">
+  <div class="premium-config-card">
+    <span class="config-icon">🔑</span>
+    <div>
+      <div class="config-label">API Key</div>
+      {% if api_key_configured %}
+        <span class="config-value green">&#10003; Configured</span>
+        <span class="config-meta">{{ api_key_masked }}</span>
+      {% else %}
+        <span class="config-value red">&#10007; Not set</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="premium-config-card" style="min-width:260px">
+    <span class="config-icon">🤖</span>
+    <div>
+      <div class="config-label">Transcription Pipeline</div>
+      <span class="config-value accent">Gemini 3.1 Flash</span>
+      <span class="config-meta">+ Whisper-1 timestamps</span>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Activity -->
+<h2 class="premium-section-title" style="color:var(--p-text-accent);margin-bottom:1rem">Recent Activity (last 20)</h2>
+
+<div class="premium-table-wrapper premium-fade-in premium-fade-in-delay-3">
+<table class="premium-table">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>User</th>
+      <th>Action</th>
+      <th>IP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in recent_logs %}
+    <tr>
+      <td class="cell-muted" style="white-space:nowrap;font-size:0.8rem">{{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ log.user.email }}</td>
+      <td>
+        {% set action_class = 'premium-badge-emerald' if log.action == 'login' else
+          'premium-badge-gray' if log.action == 'logout' else
+          'premium-badge-violet' if log.action == 'register' else
+          'premium-badge-gold' %}
+        <span class="premium-badge {{ action_class }}">{{ log.action.replace('_', ' ') }}</span>
+      </td>
+      <td class="cell-mono">{{ log.ip_address }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="cell-empty">No activity yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Contact Messages — Admin{% endblock %}
+{% block content %}
+
+<div class="premium-fade-in">
+  <div class="premium-flex premium-flex-center" style="justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem">
+    <h2 class="premium-heading-md" style="margin-bottom:0">📬 Contact Messages</h2>
+    <a href="{{ url_for('auth.admin_dashboard') }}" class="premium-btn premium-btn-ghost">← Back to Dashboard</a>
+  </div>
+
+  {% if messages.items %}
+    <div class="premium-table-wrapper">
+      <table class="premium-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Subject</th>
+            <th>Message</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for msg in messages.items %}
+          <tr>
+            <td>
+              {% if msg.is_read %}
+                <span class="premium-badge premium-badge-gray">Read</span>
+              {% else %}
+                <span class="premium-badge premium-badge-violet">
+                  <span class="status-dot blue"></span> New
+                </span>
+              {% endif %}
+            </td>
+            <td class="cell-muted">{{ msg.name }}</td>
+            <td>
+              <a href="mailto:{{ msg.email }}" class="premium-text-accent" style="text-decoration:none;font-size:0.82rem">
+                {{ msg.email }}
+              </a>
+            </td>
+            <td class="cell-muted">{{ msg.subject or '—' }}</td>
+            <td style="max-width:280px">
+              <details>
+                <summary class="premium-text-accent" style="cursor:pointer;font-size:0.82rem">
+                  {{ msg.message[:80] }}{% if msg.message|length > 80 %}…{% endif %}
+                </summary>
+                <pre class="premium-code" style="margin-top:0.5rem;white-space:pre-wrap;word-wrap:break-word;background:rgba(0,0,0,0.3);padding:0.75rem;border-radius:6px;font-size:0.82rem">{{ msg.message }}</pre>
+              </details>
+            </td>
+            <td class="cell-mono" style="white-space:nowrap">
+              {{ msg.created_at.strftime('%Y-%m-%d') }}
+              <br><span style="font-size:0.72rem;color:var(--p-text-muted)">{{ msg.created_at.strftime('%H:%M UTC') }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if messages.pages > 1 %}
+    <div class="premium-pagination">
+      {% if messages.has_prev %}
+        <a href="{{ url_for('auth.admin_contact_messages', page=messages.prev_num) }}" class="page-link">← Previous</a>
+      {% endif %}
+      <span class="page-info">Page {{ messages.page }} of {{ messages.pages }}</span>
+      {% if messages.has_next %}
+        <a href="{{ url_for('auth.admin_contact_messages', page=messages.next_num) }}" class="page-link">Next →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div class="premium-card premium-text-center" style="padding:2.5rem">
+      <p style="font-size:2rem;margin-bottom:0.5rem">📭</p>
+      <p class="premium-text-muted" style="font-size:0.95rem">No contact messages yet.</p>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

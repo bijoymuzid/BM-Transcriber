@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}BM Transcriber{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/premium.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body class="premium-body">
+
+<!-- Beta notification banner -->
+<div id="beta-banner" class="premium-beta-banner" style="display:none">
+  <span>🚧 <strong>Beta Version</strong> — It is just a beta version. We keep working on it. We will add some new features for this site. Let us know if you want anything new for our site.</span>
+  <button class="beta-close" onclick="dismissBeta()" aria-label="Close">&times;</button>
+</div>
+<script>
+(function(){
+  try {
+    if (!localStorage.getItem('beta_dismissed')) {
+      document.getElementById('beta-banner').style.display = 'flex';
+    }
+  } catch(e){}
+})();
+function dismissBeta(){
+  document.getElementById('beta-banner').style.display = 'none';
+  try { localStorage.setItem('beta_dismissed', '1'); } catch(e){}
+}
+</script>
+
+<nav class="premium-nav">
+  <a href="/" class="brand">🎤 BM Transcriber</a>
+  <div class="links">
+    <a href="{{ url_for('auth.contact') }}" class="nav-link">Contact</a>
+    {% if current_user.is_authenticated %}
+      <a href="{{ url_for('auth.profile') }}" class="nav-link">Profile</a>
+      {% if current_user.is_admin %}
+        <a href="{{ url_for('auth.admin_dashboard') }}" class="nav-link">Dashboard</a>
+        <a href="{{ url_for('auth.admin_users') }}" class="nav-link">Users</a>
+        <a href="{{ url_for('auth.admin_logs') }}" class="nav-link">Logs</a>
+        <a href="{{ url_for('auth.admin_contact_messages') }}" class="nav-link">Messages</a>
+      {% endif %}
+      <a href="{{ url_for('auth.logout') }}" class="nav-link btn-outline">Logout</a>
+      <span class="nav-user">{{ current_user.email }}</span>
+    {% else %}
+      <a href="{{ url_for('auth.login') }}" class="nav-link">Login</a>
+      <a href="{{ url_for('auth.register') }}" class="nav-link btn-outline">Register</a>
+    {% endif %}
+  </div>
+</nav>
+
+<div class="premium-container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="premium-flash {{ category }}">
+          <span class="premium-flash-icon">
+            {% if category == 'success' %}✅
+            {% elif category == 'danger' %}⚠️
+            {% elif category == 'warning' %}⚠️
+            {% elif category == 'info' %}ℹ️
+            {% endif %}
+          </span>
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+
+<footer class="premium-footer">
+  <span>© 2026 <strong>BM Transcriber</strong></span>
+  <span class="footer-sep">·</span>
+  <span>Creator: <strong>BIJOY MOZID</strong></span>
+  <span class="footer-sep">·</span>
+  <span>Contact: <strong>01303548685</strong></span>
+  <span class="footer-sep">·</span>
+  <a href="{{ url_for('auth.contact') }}">Contact Us</a>
+</footer>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

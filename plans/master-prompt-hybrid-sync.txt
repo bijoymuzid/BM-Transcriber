@@ -1,0 +1,297 @@
+MASTER PROMPT — Hybrid Gemini + Whisper Word-Sync Fix for BM Transcriber
+FINAL VERSION — Using OpenRouter whisper-large-v3-turbo
+
+Paste everything below into your VS Code AI (Copilot Chat / Cursor / Claude Code) as one message.
+
+===========================================================================
+0. READ FIRST — Do not write any code until you've done this
+===========================================================================
+
+Before changing anything, open and read these files fully so you understand
+the real structure. Do not assume — verify against the actual code:
+
+1. app.py
+2. services/timestamp_estimator.py
+3. services/word_aligner.py
+4. static/js/sync-player.js
+5. Whatever route file currently handles /transcribe-with-words (it may live
+   in app.py or a separate blueprint — find it)
+6. .env / .env.example
+7. requirements.txt
+
+After reading, summarize back to me (in your response, before editing):
+- The exact function signature of the alignment function in word_aligner.py
+- Whether align_edited_words() currently takes (original_words, edited_text)
+  or something else
+- Whether there's already any Whisper integration anywhere in the codebase
+- Which env var currently holds the OpenRouter key
+
+Only after that summary, proceed to implementation.
+
+===========================================================================
+1. CONTEXT — What this app does
+===========================================================================
+
+This is a Flask-based Bengali/English audio transcription web app
+("BM Transcriber"). It has:
+
+- A basic transcription flow: audio -> OpenRouter (google/gemini-3.1-flash-lite)
+  -> plain text. This route already works and must NOT be touched.
+- A "sync" flow: audio -> transcription with word-level timestamps -> a
+  browser player that highlights each word as it's spoken, using
+  requestAnimationFrame synced to audio.currentTime.
+- An auth system (Flask-Login + bcrypt + IP locking) — do not touch.
+- An admin panel — do not touch.
+
+THE PROBLEM: the sync flow currently estimates word timings mathematically
+in timestamp_estimator.py (roughly: audio duration / word count), instead
+of using real timestamp data. This produces drifting, inaccurate
+highlighting — words fall out of sync with the audio, especially with
+pauses or variable speech speed.
+
+===========================================================================
+2. GOAL — Hybrid transcription pipeline
+===========================================================================
+
+Replace math-based estimation with a two-model hybrid pipeline:
+
+- Gemini (google/gemini-3.1-flash-lite via OpenRouter) -> produces the
+  actual transcription TEXT. Keep this exactly as-is — its transcription
+  quality is good and must not change.
+
+- Whisper (openai/whisper-large-v3-turbo, ALSO via OpenRouter — same
+  OPENROUTER_API_KEY you already use, no new provider account needed) ->
+  used ONLY to extract accurate word-level TIMESTAMPS. Its own transcribed
+  text is discarded/ignored; we only want its words: [{word, start, end}]
+  array.
+    - IMPORTANT: do NOT use openai/whisper-1 — that model on OpenRouter
+      only returns plain text, no timestamps. You must use
+      openai/whisper-large-v3-turbo, which OpenRouter's own model page
+      states supports "timestamp granularities at word and segment levels."
+    - This is the budget option — Turbo is faster and cheaper than the
+      regular v3, yet still gives word-level timestamps.
+    - Whisper's own transcription text must be thrown away entirely. We
+      only keep its words array (the timing data). The final transcription
+      text the user sees always comes from Gemini, never from Whisper.
+
+- word_aligner.py -> aligns Gemini's words onto Whisper's timestamps using
+  the existing Needleman-Wunsch-style alignment logic, so the final output
+  has Gemini's correct text with Whisper's correct timing.
+
+This must work exactly the same way for the existing "edit transcription"
+flow — i.e. align_edited_words() should remain generic enough to be called
+in both places:
+
+1. Initial alignment: align_edited_words(whisper_words, gemini_text)
+2. Post-edit realignment: align_edited_words(original_words, edited_text)
+
+If the current function signature doesn't already support this dual use,
+generalize it — don't fork into two separate functions unless there's a
+strong reason to.
+
+===========================================================================
+3. TARGET ARCHITECTURE (reference — implement exactly this flow)
+===========================================================================
+
+User/Browser -> Flask (app.py): POST /transcribe-with-words (audio file)
+
+Stage 1: Flask -> OpenRouter (/api/v1/chat/completions, Gemini model,
+         base64 audio + Bengali prompt)
+         Gemini -> Flask: transcription text
+
+Stage 2: Flask -> OpenRouter (/api/v1/audio/transcriptions, Whisper Turbo
+         model, base64 audio)
+         Whisper Turbo -> Flask: { text, words: [{word, start, end}, ...] }
+         (Whisper's own `text` field is discarded — only `words` is used)
+
+Stage 3: Flask -> word_aligner.py: align_edited_words(whisper_words, gemini_text)
+         word_aligner.py -> Flask: [{word, start, end, index, unchanged}, ...]
+
+Flask stores result in SESSION_STORE & AUDIO_STORE
+
+Flask -> Browser: { id, words, text, audio_url }
+
+Browser: renderWords() -> DOM spans; rAF sync loop starts on play
+
+--- Later, on edit ---
+Browser -> Flask: PUT /api/session-transcriptions/<id> { edited_text }
+Flask -> word_aligner.py: align_edited_words(original_words, edited_text)
+word_aligner.py -> Flask: realigned words
+Flask -> Browser: { words, text }
+Browser: renderWords() -> re-render DOM
+
+===========================================================================
+4. IMPLEMENTATION REQUIREMENTS
+===========================================================================
+
+--- 4.1 New Whisper timestamp function ---
+
+Add a function (in app.py or a new services/whisper_timestamps.py — follow
+whatever module pattern the existing codebase uses for services) that:
+
+- Accepts raw audio bytes + format
+- Calls https://openrouter.ai/api/v1/audio/transcriptions — SAME base
+  domain, SAME OPENROUTER_API_KEY env var already used by
+  call_openrouter(). No new API key needed.
+- Request body: JSON (not multipart), base64-encoded audio. Use this
+  structure:
+
+    {
+      "model": "openai/whisper-large-v3-turbo",
+      "input_audio": {
+        "data": "<base64>",
+        "format": "mp3"
+      }
+    }
+
+  This matches the exact pattern already used in build_openrouter_payload()
+  / transcribe_inline() for chat completions.
+
+- BEFORE writing the parsing logic, make one real test call (a short local
+  audio clip is fine) and print the full raw JSON response to the
+  console/logs. Confirm exactly where the word timestamps live in the
+  response:
+    - Does it return a top-level `words` array?
+    - Is it nested under `segments[].words`?
+    - Does it require passing a `provider` field in the request body to
+      unlock word timestamps?
+  Do not assume the shape — verify it, then write the parser to match what
+  you actually saw.
+
+- Discard whatever transcription text Whisper returns. Only extract and
+  return the normalized words array: [{word, start, end}, ...] —
+  standardized to this exact format regardless of what OpenRouter actually
+  returns.
+
+- Follows the SAME error-handling pattern as call_openrouter() in app.py —
+  raise RuntimeError with a clear message on non-200 responses, don't let
+  exceptions leak raw tracebacks to the client.
+
+- Respects the same file-size chunking constraint. IMPORTANT: if the audio
+  is chunked (as transcribe_chunked() already does for files >
+  MAX_INLINE_BYTES), Whisper timestamps for each chunk must have the
+  chunk's start offset ADDED to every start/end value before merging, so
+  timestamps stay correct across the full file. Do not forget this — it's
+  the most common bug in chunked timestamp merging.
+
+- If, after testing, OpenRouter's whisper-large-v3-turbo genuinely does NOT
+  return word-level timestamps despite what its model page claims, fall
+  back to the existing timestamp_estimator.py (call it and log a warning)
+  instead of failing the whole request. This graceful degradation is
+  important.
+
+--- 4.2 New/modified route: /transcribe-with-words ---
+
+- Runs Stage 1 (Gemini) and Stage 2 (Whisper Turbo) — these are independent
+  of each other and can run concurrently (use whatever concurrency pattern
+  the existing codebase already uses, or sequential calls if simpler —
+  check for existing precedent before introducing a new one)
+- Passes both results into Stage 3 (word_aligner.align_edited_words)
+- Stores the aligned result in SESSION_STORE / AUDIO_STORE exactly like the
+  existing pattern (check how the current basic /transcribe route or any
+  existing session storage does this, and match it)
+- Returns { id, words, text, audio_url }
+- Uses the same CSRF-exemption pattern as /transcribe if this route also
+  takes multipart/form-data (check csrf.exempt(transcribe) in app.py)
+
+--- 4.3 word_aligner.py ---
+
+- Do not rewrite the alignment algorithm from scratch. Read the existing
+  Needleman-Wunsch (or whatever algorithm is actually implemented) logic
+  first.
+- Generalize the function signature ONLY if needed so it can accept either:
+    - (whisper_words: list[dict], gemini_text: str) for initial alignment, or
+    - (original_words: list[dict], edited_text: str) for post-edit realignment
+- These are structurally the same operation (aligning a list of timed words
+  against a new text string) — if the current function already does this,
+  no change needed beyond confirming it handles Bengali text correctly
+  (word boundaries, whitespace splitting) since Bengali doesn't always
+  tokenize the same way as English.
+
+--- 4.4 timestamp_estimator.py ---
+
+- Do NOT delete this file. Keep it as a fallback ONLY for the case where
+  the Whisper API call fails (e.g. rate limit, network error, unexpected
+  response shape) — in that case, catch the exception, log a warning, and
+  fall back to the existing estimation logic so the app degrades
+  gracefully instead of hard-failing.
+
+--- 4.5 Frontend (sync-player.js) ---
+
+- No changes should be needed here IF the words array shape returned to
+  the browser stays identical ({word, start, end, index, unchanged}).
+  Confirm this shape is unchanged before touching any frontend code. Only
+  modify the frontend if the backend response shape must change — and if
+  so, keep the change minimal.
+
+--- 4.6 Config ---
+
+- No new required env var — reuse the existing OPENROUTER_API_KEY for the
+  Whisper call, same as the Gemini call.
+- No new dependencies needed — call the REST endpoint directly with
+  requests, matching the existing call_openrouter style, for consistency
+  with the rest of the codebase.
+
+===========================================================================
+5. CONSTRAINTS — Do not touch
+===========================================================================
+
+- The existing /transcribe route (basic, non-synced transcription) — leave
+  it fully working as-is
+- Auth system (auth_models.py, auth_routes.py) — no changes
+- Admin panel — no changes
+- Security headers / HTML minification middleware in app.py — no changes
+- Do not change the Gemini prompt (TRANSCRIPTION_PROMPT) — its output
+  quality is already correct
+
+===========================================================================
+6. ERROR HANDLING
+===========================================================================
+
+Match the existing pattern in app.py:
+- Whisper API failures -> RuntimeError with descriptive message -> caught
+  in the route -> jsonify({"error": msg}) with appropriate status code
+  (502 for upstream failure, 400 for bad input)
+- If Whisper fails but Gemini succeeds: fall back to timestamp_estimator.py
+  rather than failing the whole request
+- If Gemini fails: fail the request the same way /transcribe already does
+  today
+
+===========================================================================
+7. TESTING / ACCEPTANCE CRITERIA
+===========================================================================
+
+Before considering this done, verify:
+
+1. A short (~10s) audio clip produces word timestamps that visibly line up
+   with playback — spot check 3-4 words manually against the audio
+2. A large audio file that triggers chunking still produces correctly
+   offset timestamps across chunk boundaries (no reset-to-zero at each
+   chunk)
+3. The existing basic /transcribe route still works unchanged
+4. The edit flow (PUT /api/session-transcriptions/<id>) still works and
+   reuses the same alignment function
+5. If the Whisper call fails (bad response, rate limit, etc.), the app
+   falls back to estimation instead of crashing
+6. Bengali text alignment doesn't break on word boundaries (test with a
+   Bengali audio sample, not just English)
+7. Confirm Whisper's own transcribed text is never shown to the user or
+   stored anywhere — only its timestamps are used. Gemini's text is the
+   only text that reaches the final output.
+
+===========================================================================
+8. OUTPUT FORMAT
+===========================================================================
+
+After implementing, give me:
+- A list of every file you changed or created
+- A short diff-style summary of what changed in each
+- Any assumption you had to make because the actual code didn't match what
+  was described above (e.g. different function names, different storage
+  pattern) — flag these explicitly so I can double check them
+
+===========================================================================
+
+Ready? Copy this entire prompt into your AI and start with step 0 (reading
+the actual files first). Don't skip that step — it's what keeps you from
+breaking something.

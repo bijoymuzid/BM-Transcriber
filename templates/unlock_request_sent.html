@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Unlock Request Sent{% endblock %}
+{% block content %}
+<div class="premium-form-card premium-fade-in" style="max-width:520px;text-align:center">
+  <div class="premium-card premium-card-glow" style="padding:2.5rem">
+    <div style="font-size:3rem;margin-bottom:1rem">📨</div>
+    <h1 class="premium-heading-md" style="margin-bottom:1rem">Request Sent!</h1>
+    <p class="premium-text-muted" style="font-size:0.92rem;line-height:1.6">
+      Your unlock request has been submitted. The admin will review it and
+      unlock your account if approved.
+    </p>
+    <div class="premium-info-box" style="margin-top:1.5rem">
+      <p>
+        You can also contact the admin directly at:<br>
+        <strong style="color:var(--p-text-accent)">{{ admin_email }}</strong>
+      </p>
+    </div>
+    <div style="margin-top:1.75rem">
+      <a href="{{ url_for('auth.login') }}" class="premium-btn premium-btn-primary">Back to Login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

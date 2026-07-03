@@ -1,0 +1,9 @@
+flask>=3.0
+python-dotenv>=1.0
+requests>=2.31
+flask-sqlalchemy>=3.0
+flask-login>=0.6
+flask-bcrypt>=1.0
+flask-limiter>=3.0
+flask-wtf>=1.0
+flask-mail>=0.9.1

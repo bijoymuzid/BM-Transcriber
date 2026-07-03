@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Login Activity Logs — Admin{% endblock %}
+{% block content %}
+
+<h1 class="premium-heading-md premium-fade-in">Login Activity Logs</h1>
+
+<div class="premium-table-wrapper premium-fade-in premium-fade-in-delay-1">
+<table class="premium-table">
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>User</th>
+      <th>Action</th>
+      <th>IP Address</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in logs.items %}
+    <tr>
+      <td class="cell-muted" style="white-space:nowrap;font-size:0.8rem">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>{{ log.user.email }}</td>
+      <td>
+        {% set badge_class = 'premium-badge-emerald' if log.action == 'login' else
+          'premium-badge-gray' if log.action == 'logout' else
+          'premium-badge-red' if log.action in ('lock', 'login_failed', 'unlock_denied') else
+          'premium-badge-indigo' if log.action in ('unlock', 'verify_email') else
+          'premium-badge-violet' if log.action == 'register' else
+          'premium-badge-gold' %}
+        <span class="premium-badge {{ badge_class }}">{{ log.action.replace('_', ' ') }}</span>
+      </td>
+      <td class="cell-mono">{{ log.ip_address }}</td>
+      <td class="cell-muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.8rem">{{ log.details[:120] if log.details else '—' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="cell-empty">No activity logs yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if logs.pages > 1 %}
+<div class="premium-pagination premium-fade-in">
+  {% if logs.has_prev %}
+  <a href="{{ url_for('auth.admin_logs', page=logs.prev_num) }}" class="page-link">&laquo; Previous</a>
+  {% endif %}
+  <span class="page-info">Page {{ logs.page }} of {{ logs.pages }}</span>
+  {% if logs.has_next %}
+  <a href="{{ url_for('auth.admin_logs', page=logs.next_num) }}" class="page-link">Next &raquo;</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="premium-mt-lg">
+  <a href="{{ url_for('auth.admin_dashboard') }}" class="premium-back-link">&larr; Back to Dashboard</a>
+</div>
+
+{% endblock %}

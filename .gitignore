@@ -1,0 +1,25 @@
+# Environment variables (contains secrets)
+.env
+
+# Python virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Database (SQLite)
+instance/
+
+# Uploaded audio files for sync player
+uploads/
+
+# Large binaries (avoid GitHub file size limits)
+ffmpeg.exe
+*.rar
+
+# OS artifacts
+$null
+Thumbs.db
+.DS_Store

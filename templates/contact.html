@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Contact Us{% endblock %}
+{% block content %}
+
+<div class="premium-container" style="max-width:600px;padding-top:1.5rem">
+
+  <header class="premium-fade-in" style="text-align:center;margin-bottom:2rem">
+    <h1 class="premium-heading-lg">📬 Contact Us</h1>
+    <p class="premium-text-muted" style="margin-top:0.35rem;font-size:0.95rem">
+      Have a question, suggestion, or feedback? We'd love to hear from you.
+    </p>
+  </header>
+
+  <div class="premium-card premium-fade-in premium-fade-in-delay-1" style="text-align:left">
+    <form method="POST" action="{{ url_for('auth.contact') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="premium-form-group">
+        <label for="name">Your Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          class="premium-input"
+          placeholder="Enter your name"
+          maxlength="255"
+          required
+          value="{{ request.form.get('name', '') }}"
+        >
+      </div>
+
+      <div class="premium-form-group">
+        <label for="email">Your Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          class="premium-input"
+          placeholder="you@example.com"
+          maxlength="255"
+          required
+          value="{{ request.form.get('email', '') }}"
+        >
+      </div>
+
+      <div class="premium-form-group">
+        <label for="subject">Subject <span class="premium-text-muted" style="font-weight:400;text-transform:none">(optional)</span></label>
+        <input
+          type="text"
+          id="subject"
+          name="subject"
+          class="premium-input"
+          placeholder="What is this about?"
+          maxlength="255"
+          value="{{ request.form.get('subject', '') }}"
+        >
+      </div>
+
+      <div class="premium-form-group">
+        <label for="message">Message</label>
+        <textarea
+          id="message"
+          name="message"
+          class="premium-input premium-textarea"
+          placeholder="Tell us more (at least 10 characters)..."
+          rows="6"
+          required
+          minlength="10"
+        >{{ request.form.get('message', '') }}</textarea>
+        <span class="premium-input-help">Your message will be sent to the site admin and kept confidential.</span>
+      </div>
+
+      <button type="submit" class="premium-btn premium-btn-primary premium-btn-block">
+        <span class="btn-label">✉️ Send Message</span>
+      </button>
+    </form>
+  </div>
+
+  <div class="premium-text-center premium-fade-in premium-fade-in-delay-2" style="margin-top:1.5rem">
+    <p class="premium-text-muted" style="margin-bottom:0.25rem">
+      Prefer an email directly?
+    </p>
+    <a href="mailto:niabijoy123@gmail.com" class="premium-text-accent" style="text-decoration:none;font-weight:600">
+      niabijoy123@gmail.com
+    </a>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+{% block title %}BM Transcriber{% endblock %}
+{% block extra_head %}
+<style>
+  /* Index-specific micro-adjustments */
+  .premium-dropzone {
+    padding: 2.75rem 1.25rem;
+  }
+  .premium-transcription-output {
+    min-height: 80px;
+  }
+  .__dnt_remove_me { display: none; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="premium-container" style="max-width:680px;text-align:center;padding-top:1rem">
+
+  <header class="premium-fade-in" style="margin-bottom:2rem">
+    <h1 class="premium-heading-lg">BM Transcriber</h1>
+    <p class="premium-text-muted" style="margin-top:0.35rem;font-size:0.95rem">
+      Upload an audio file and get instant transcription
+    </p>
+  </header>
+
+  <!-- Resume last session banner (hidden by default) -->
+  <div id="resume-banner" class="premium-card premium-card-sm" style="display:none;margin-bottom:1rem;text-align:left;background:rgba(99,102,241,0.08);border-color:rgba(99,102,241,0.2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <span style="font-size:1.2rem">🎧</span>
+        <div>
+          <div style="font-size:0.85rem;font-weight:600;color:var(--p-text-accent)">Previous Session Found</div>
+          <div id="resume-text" style="font-size:0.78rem;color:var(--p-text-muted);margin-top:0.15rem"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.35rem">
+        <button id="resume-btn" class="premium-btn premium-btn-outline premium-btn-sm">▶ Resume Player</button>
+        <button id="dismiss-resume-btn" class="premium-btn premium-btn-ghost premium-btn-sm" title="Dismiss">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error area -->
+  <div id="error-area" style="display:none;padding:1rem;background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.2);border-radius:10px;color:#fca5a5;font-size:0.9rem;margin-bottom:1.25rem;text-align:left"></div>
+
+  <!-- Drop zone -->
+  <div class="premium-card premium-fade-in premium-fade-in-delay-1" style="text-align:left">
+    <span class="card-label">Audio File</span>
+    <div class="premium-dropzone" id="drop-zone">
+      <div class="dz-icon">🎤</div>
+      <div class="dz-text">
+        Drag & drop your audio here or <strong>browse</strong>
+      </div>
+      <div class="dz-filename" id="file-name-display"></div>
+    </div>
+    <input type="file" id="file-input" accept="audio/*" style="display:none">
+  </div>
+
+  <!-- Transcribe buttons -->
+  <div class="premium-fade-in premium-fade-in-delay-2" style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    <button id="transcribe-btn" class="premium-btn premium-btn-primary premium-btn-block" style="flex:1" disabled>
+      <span class="btn-label">Transcribe</span>
+      <span class="spinner"></span>
+    </button>
+    <button id="sync-btn" class="premium-btn premium-btn-outline" style="flex:1;min-width:140px" disabled>
+      <span class="btn-label">🎧 Transcribe & Sync</span>
+      <span class="spinner"></span>
+    </button>
+  </div>
+
+  <!-- Result -->
+  <div id="result-area" class="premium-card premium-card-glow premium-fade-in premium-fade-in-delay-3" style="display:none;margin-top:1.25rem;text-align:left">
+    <div class="premium-result-header">
+      <h3>📝 Transcription</h3>
+      <div style="display:flex;gap:0.35rem;align-items:center">
+        <button id="open-player-btn" class="premium-btn premium-btn-outline premium-btn-sm" style="display:none">🎧 Open Sync Player</button>
+        <button id="copy-btn" class="premium-btn premium-btn-ghost" style="font-size:0.82rem">Copy</button>
+      </div>
+    </div>
+    <pre class="premium-transcription-output" id="transcription-output"></pre>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  // DOM refs
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const fileNameDisplay = document.getElementById('file-name-display');
+  const transcribeBtn = document.getElementById('transcribe-btn');
+  const syncBtn = document.getElementById('sync-btn');
+  const resultArea = document.getElementById('result-area');
+  const transcriptionOutput = document.getElementById('transcription-output');
+  const copyBtn = document.getElementById('copy-btn');
+  const openPlayerBtn = document.getElementById('open-player-btn');
+  const errorArea = document.getElementById('error-area');
+  const resumeBanner = document.getElementById('resume-banner');
+  const resumeBtn = document.getElementById('resume-btn');
+  const dismissResumeBtn = document.getElementById('dismiss-resume-btn');
+  const resumeText = document.getElementById('resume-text');
+
+  let selectedFile = null;
+
+  // --- Check for existing session in sessionStorage (survives navigation) ---
+  function checkResumeSession() {
+    try {
+      const sessionId = sessionStorage.getItem('bm_sync_session_id');
+      const text = sessionStorage.getItem('bm_sync_text');
+      const duration = sessionStorage.getItem('bm_sync_duration');
+      if (sessionId && text) {
+        const preview = text.length > 80 ? text.substring(0, 80) + '\u2026' : text;
+        var resumeInfo = '"' + preview + '"';
+        if (duration) {
+          var durMin = Math.floor(parseFloat(duration) / 60);
+          var durSec = Math.floor(parseFloat(duration) % 60);
+          resumeInfo += ' \u00B7 ' + durMin + ':' + (durSec < 10 ? '0' : '') + durSec;
+        }
+        resumeText.textContent = resumeInfo;
+        resumeBanner.style.display = 'block';
+        resumeBtn.onclick = function() {
+          window.location.href = '/player/' + sessionId;
+        };
+      }
+    } catch(e) {}
+  }
+  checkResumeSession();
+
+  // Dismiss resume banner
+  if (dismissResumeBtn) {
+    dismissResumeBtn.addEventListener('click', function() {
+      resumeBanner.style.display = 'none';
+      try { sessionStorage.removeItem('bm_sync_session_id'); } catch(e) {}
+    });
+  }
+
+  // --- Drop zone ---
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+
+  dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', function() {
+    if (fileInput.files.length > 0) {
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  function handleFile(file) {
+    selectedFile = file;
+    fileNameDisplay.textContent = '\uD83D\uDCC4 ' + file.name + ' (' + formatSize(file.size) + ')';
+    dropZone.classList.add('has-file');
+    hideError();
+    updateButtonState();
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // --- Button state ---
+  function updateButtonState() {
+    const hasFile = selectedFile !== null;
+    transcribeBtn.disabled = !hasFile;
+    syncBtn.disabled = !hasFile;
+  }
+
+  function setLoading(btn, loading) {
+    if (loading) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+    } else {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  }
+
+  // --- Transcribe (plain text) ---
+  transcribeBtn.addEventListener('click', transcribe);
+
+  async function transcribe() {
+    if (!selectedFile) { showError('Please select an audio file'); return; }
+
+    hideError();
+    resultArea.style.display = 'none';
+    setLoading(transcribeBtn, true);
+    syncBtn.disabled = true;
+    openPlayerBtn.style.display = 'none';
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const resp = await fetch('/transcribe', { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (!resp.ok) {
+        showError(data.error || 'Request failed');
+        return;
+      }
+      transcriptionOutput.textContent = data.transcription;
+      resultArea.style.display = 'block';
+      copyBtn.textContent = 'Copy';
+      copyBtn.classList.remove('copied');
+    } catch (err) {
+      showError('Network error: ' + err.message);
+    } finally {
+      setLoading(transcribeBtn, false);
+      syncBtn.disabled = false;
+      updateButtonState();
+    }
+  }
+
+  // --- Transcribe with sync player ---
+  syncBtn.addEventListener('click', transcribeWithSync);
+
+  async function transcribeWithSync() {
+    if (!selectedFile) { showError('Please select an audio file'); return; }
+
+    hideError();
+    resultArea.style.display = 'none';
+    setLoading(syncBtn, true);
+    transcribeBtn.disabled = true;
+    openPlayerBtn.style.display = 'none';
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const resp = await fetch('/transcribe-with-words', { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (!resp.ok) {
+        showError(data.error || 'Request failed');
+        return;
+      }
+      // Show transcription preview and link to player
+      transcriptionOutput.textContent = data.text;
+      resultArea.style.display = 'block';
+      copyBtn.textContent = 'Copy';
+      copyBtn.classList.remove('copied');
+      openPlayerBtn.style.display = 'inline-flex';
+
+      // Persist session data to sessionStorage (survives back-navigation)
+      try {
+        sessionStorage.setItem('bm_sync_session_id', data.id);
+        sessionStorage.setItem('bm_sync_audio_url', data.audio_url);
+        sessionStorage.setItem('bm_sync_text', data.text);
+        sessionStorage.setItem('bm_sync_duration', String(data.duration));
+      } catch(e) {}
+
+      openPlayerBtn.onclick = function() {
+        window.location.href = '/player/' + data.id;
+      };
+    } catch (err) {
+      showError('Network error: ' + err.message);
+    } finally {
+      setLoading(syncBtn, false);
+      transcribeBtn.disabled = false;
+      updateButtonState();
+    }
+  }
+
+  // --- Copy ---
+  copyBtn.addEventListener('click', function() {
+    const text = transcriptionOutput.textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+      copyBtn.textContent = 'Copied!';
+      copyBtn.classList.add('copied');
+      setTimeout(function() {
+        copyBtn.textContent = 'Copy';
+        copyBtn.classList.remove('copied');
+      }, 2000);
+    }).catch(function() {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      copyBtn.textContent = 'Copied!';
+      copyBtn.classList.add('copied');
+      setTimeout(function() {
+        copyBtn.textContent = 'Copy';
+        copyBtn.classList.remove('copied');
+      }, 2000);
+    });
+  });
+
+  // --- Error ---
+  function showError(msg) {
+    errorArea.textContent = msg;
+    errorArea.style.display = 'block';
+  }
+  function hideError() {
+    errorArea.textContent = '';
+    errorArea.style.display = 'none';
+  }
+})();
+</script>
+{% endblock %}

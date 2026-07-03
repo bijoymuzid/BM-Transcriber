@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Request Account Unlock{% endblock %}
+{% block content %}
+<div class="premium-form-card premium-fade-in" style="max-width:480px">
+  <div class="premium-card premium-card-glow" style="padding:2rem">
+    <h1 class="premium-heading-md" style="text-align:center;margin-bottom:0.5rem">Request Account Unlock</h1>
+    <p class="premium-text-muted premium-text-center" style="font-size:0.88rem;margin-bottom:1.5rem;line-height:1.5">
+      Your account was locked due to login from an unrecognised IP address.<br>
+      Fill out the form below to request the admin to unlock it.
+    </p>
+    <form method="POST" action="{{ url_for('auth.request_unlock') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="premium-form-group">
+        <label for="email">Your Email</label>
+        <input type="email" id="email" name="email" required class="premium-input" placeholder="you@example.com">
+      </div>
+      <div class="premium-form-group">
+        <label for="message">Message (optional)</label>
+        <textarea id="message" name="message" rows="3" class="premium-input premium-textarea" placeholder="e.g. I was travelling and used a different network..."></textarea>
+      </div>
+      <button type="submit" class="premium-btn premium-btn-primary premium-btn-block">Submit Request</button>
+    </form>
+    <div class="premium-info-box" style="margin-top:1.5rem">
+      <p>
+        You can also email the admin directly at:<br>
+        <strong style="color:var(--p-text-accent)">{{ admin_email }}</strong>
+      </p>
+    </div>
+    <p class="premium-text-muted premium-text-center" style="margin-top:1rem;font-size:0.85rem">
+      <a href="{{ url_for('auth.login') }}" style="color:var(--p-text-accent);text-decoration:none;font-weight:500">Back to Login</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

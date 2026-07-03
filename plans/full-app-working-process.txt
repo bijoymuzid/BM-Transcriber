@@ -1,0 +1,751 @@
+================================================================================
+  BM TRANSCRIBER — COMPLETE APPLICATION OVERVIEW
+================================================================================
+
+  Creator: BIJOY MOZID
+  Contact: 01303548685 / niabijoy123@gmail.com
+
+================================================================================
+1.  PROJECT OVERVIEW
+================================================================================
+
+BM Transcriber is a Bengali-focused audio transcription web application. Users
+upload audio files, and the app sends them to an AI model (via OpenRouter) for
+transcription. It supports two modes:
+  - Basic transcription (plain text output)
+  - Sync transcription (word-level timestamps + audio player with highlighting)
+
+The app also has a full authentication system with IP-based account locking,
+role-based admin panel, contact form, and in-memory session-based sync player.
+
+================================================================================
+2.  TECHNOLOGY STACK
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Layer        │ Technology                                                   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Backend      │ Python 3.10+ / Flask 3.0                                     │
+│ Database     │ SQLite via SQLAlchemy 3.0 (stored in instance/app.db)        │
+│ Auth         │ Flask-Login 0.6, Flask-Bcrypt 1.0, Flask-WTF CSRF            │
+│ Rate Limit   │ Flask-Limiter 3.0 (200 req/day default, 5/min login)         │
+│ Email        │ Flask-Mail 0.9 (SMTP via Gmail App Password)                 │
+│ Audio Proc   │ ffmpeg/ffprobe (for chunking large files + duration detect)  │
+│ Transcription│ OpenRouter API (gemini-3.1-flash-lite model)                 │
+│ Frontend     │ Jinja2 Templates + Vanilla JS + Premium CSS (glassmorphism)  │
+│ Services     │ Custom Python modules in services/ directory                 │
+│ Config       │ .env file with python-dotenv                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+3.  FILE & DIRECTORY STRUCTURE
+================================================================================
+
+  Local LLM/
+  ├── app.py                          # Main Flask application (all routes)
+  ├── auth_models.py                  # SQLAlchemy models (User, UnlockRequest,
+  │                                   #   LoginLog, ContactMessage, Transcription)
+  ├── auth_routes.py                  # Blueprint: login, register, admin routes
+  ├── auth_utils.py                   # Decorators (admin_required, login_required)
+  │                                   #   + log_action() + notification helpers
+  ├── extensions.py                   # Flask-Mail instance (avoids circular imports)
+  ├── requirements.txt                # Python dependencies
+  ├── .env                            # Environment variables (secrets, config)
+  ├── .env.example                    # Template for .env
+  ├── run.ps1                         # PowerShell launcher (auto venv + deps)
+  ├── start.bat                       # Windows CMD launcher (auto venv + deps)
+  ├── ffmpeg.exe                      # Bundled ffmpeg binary (fallback)
+  │
+  ├── services/                       # Service layer modules
+  │   ├── __init__.py                 # Package marker
+  │   ├── timestamp_estimator.py      # Estimate word timestamps from plain text
+  │   └── word_aligner.py             # Needleman-Wunsch alignment for edited text
+  │
+  ├── static/
+  │   ├── css/premium.css             # Full design system (glassmorphism, dark)
+  │   └── js/sync-player.js           # Client-side sync player logic
+  │
+  ├── templates/                      # Jinja2 templates
+  │   ├── base.html                   # Base layout (nav, footer, flash messages)
+  │   ├── index.html                  # Home page (upload + transcribe)
+  │   ├── player.html                 # Sync player page (audio + transcript)
+  │   ├── login.html                  # Login form
+  │   ├── register.html               # Registration form
+  │   ├── profile.html                # User profile page
+  │   ├── contact.html                # Public contact form
+  │   ├── unlock_request_sent.html    # Confirmation after unlock request
+  │   └── admin/
+  │       ├── dashboard.html          # Admin dashboard with stats
+  │       ├── users.html              # User management table
+  │       ├── logs.html               # Login activity logs (paginated)
+  │       ├── unlock_requests.html    # Pending + history unlock requests
+  │       └── contact_messages.html   # Contact form submissions
+  │
+  ├── instance/app.db                 # SQLite database (auto-created)
+  └── plans/                          # Planning documents (various)
+
+================================================================================
+4.  HOW THE APP WORKS — STEP BY STEP FLOW
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     USER FLOW DIAGRAM                                       │
+│                                                                             │
+│  ┌──────────┐    ┌───────────┐    ┌──────────────┐    ┌────────────────┐   │
+│  │ LANDING  │───▶│ UPLOAD    │───▶│ TRANSCRIBE   │───▶│ BASIC TEXT     │   │
+│  │ (index)  │    │ AUDIO     │    │ or SYNC      │    │ or SYNC PLAYER │   │
+│  └──────────┘    └───────────┘    └──────────────┘    └────────────────┘   │
+│       │                │                │                                    │
+│       │                │                │   ┌──────────────────┐             │
+│       │                │                └──▶│ OpenRouter API   │             │
+│       │                │                    │ (gemini-3.1-     │             │
+│       │                │                    │  flash-lite)     │             │
+│       │                │                    └──────────────────┘             │
+│       ▼                ▼                                                      │
+│  ┌──────────┐    ┌──────────┐                                                │
+│  │ LOGIN /  │    │ REGISTER │                                                │
+│  │ CONTACT  │    │ (auth)   │                                                │
+│  └──────────┘    └──────────┘                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+4.1 HOME PAGE (index.html)
+────────────────────────────
+  - User opens http://127.0.0.1:5000
+  - Page checks sessionStorage for a previous sync session ("Resume" banner)
+  - User drags & drops an audio file (or clicks to browse)
+  - Two buttons become enabled:
+      A) "Transcribe" — basic text transcription
+      B) "Transcribe & Sync" — word-level sync with audio player
+
+4.2 BASIC TRANSCRIPTION FLOW
+─────────────────────────────
+  1. User clicks "Transcribe"
+  2. Frontend POSTs to /transcribe (multipart/form-data with the audio file)
+  3. Server (app.py:transcribe()):
+     a. Resolves API key:
+        - If user sends X-API-Key header → use that
+        - Otherwise → fall back to server's OPENROUTER_API_KEY from .env
+     b. Detects audio format from filename extension (.mp3, .wav, .ogg, etc.)
+     c. Hardcoded model: google/gemini-3.1-flash-lite
+     d. Size check:
+        - If ≤ 25 MB → transcribe_inline() — base64 encode + single API call
+        - If > 25 MB → transcribe_chunked() — split via ffmpeg in ~10 MB chunks,
+          transcribe each segment, concatenate results
+     e. Returns JSON: {"transcription": "..."}
+  4. Frontend displays the transcribed text with a "Copy" button
+
+4.3 SYNC TRANSCRIPTION FLOW (Transcribe & Sync)
+─────────────────────────────────────────────────
+  1. User clicks "Transcribe & Sync"
+  2. Frontend POSTs to /transcribe-with-words (multipart/form-data)
+  3. Server (app.py:transcribe_with_words()):
+     a. Same API key resolution + format detection as basic flow
+     b. Gets audio duration via ffprobe/ffmpeg (writes temp file, reads, deletes)
+     c. Transcribes:
+        - If ≤ 25 MB → transcribe_inline() + estimate_word_timestamps()
+        - If > 25 MB → transcribe_chunked_with_ranges() + estimate_word_timestamps_chunked()
+     d. Stores everything in IN-MEMORY dictionaries (SESSION_STORE, AUDIO_STORE)
+        keyed by a random UUID (sync_session_id)
+     e. Stores only the sync_session_id in Flask's session cookie
+     f. Returns JSON:
+        {
+          "id": "...",        // sync_session_id
+          "words": [...],     // [{word, start, end, index}, ...]
+          "text": "...",      // full transcription text
+          "duration": 123.4,  // seconds
+          "audio_url": "/session-audio/<id>"
+        }
+  4. Frontend:
+     a. Shows transcription preview
+     b. Shows "Open Sync Player" button
+     c. Saves session data to sessionStorage (survives browser navigation)
+     d. User clicks → navigates to /player/<sync_session_id>
+
+4.4 SYNC PLAYER PAGE (player.html)
+───────────────────────────────────
+  1. Page loads, triggers sync-player.js
+  2. JS calls GET /api/session-transcriptions/<id> to fetch word data
+  3. Audio URL: /session-audio/<id> (served directly from RAM)
+  4. Renders each word as a clickable <span> with data-start and data-end attrs
+  5. Features:
+     - Real-time word highlighting via rAF (~60fps loop)
+     - Click any word → seek audio to that position (with seek-guard)
+     - Play/pause, seek bar, time display, speed control (0.5x-2x)
+     - Auto-scroll active word into view
+     - Edit transcript → save → server realigns timestamps (Needleman-Wunsch)
+     - Reset to original
+     - Copy transcript text
+     - Keyboard shortcuts: Space (play/pause), ←/→ (rewind 5s / forward 5s)
+     - Waveform-style progress bars
+  6. Session recovery: if server data expired, falls back to sessionStorage
+
+4.5 AUDIO CHUNKING (for files > 25 MB)
+────────────────────────────────────────
+  - ffmpeg is used to split the audio into ~10 MB chunks
+  - Each chunk is transcribed individually via OpenRouter
+  - Results are concatenated with segment markers: [Segment 1/3], [Segment 2/3], etc.
+  - For sync player, each chunk gets its own time range, and words are distributed
+    proportionally within that chunk's [start, end) range
+
+================================================================================
+5.  AUTHENTICATION SYSTEM
+================================================================================
+
+5.1 REGISTRATION
+─────────────────
+  - GET/POST /register (rate-limited: 3 per hour)
+  - No email verification required
+  - Password minimum 8 characters
+  - If email = "niabijoy123@gmail.com" → user gets admin role
+  - User is NOT locked on creation
+
+5.2 LOGIN WITH IP LOCKING
+──────────────────────────
+  - GET/POST /login (rate-limited: 5 per minute)
+  - On first successful login: user's IP address is stored in DB
+  - On subsequent logins:
+    - If IP matches → login succeeds
+    - If IP is DIFFERENT → account is AUTOMATICALLY LOCKED
+    - Admin must manually unlock via admin panel
+  - Locked users cannot log in until unlocked
+
+5.3 UNLOCK REQUEST FLOW
+─────────────────────────
+  1. Locked user visits /request-unlock
+  2. Submits their email + a message
+  3. An UnlockRequest record is created (status: "pending")
+  4. Admin is notified via console print
+  5. Admin can:
+     - Approve → unlocks account, sets status to "approved"
+     - Deny → sets status to "denied"
+  6. User is notified via flash message on next login attempt
+
+5.4 ADMIN PANEL
+─────────────────
+  Protected by login_required + admin_required decorators
+
+  Routes:
+  - /admin/dashboard        Stats (users, locked, requests, messages) + recent logs
+  - /admin/users            User table with unlock + API key management
+  - /admin/unlock-requests  Pending and history unlock requests
+  - /admin/logs             Paginated login activity log
+  - /admin/contact-messages Paginated contact form submissions (auto-mark read)
+
+  Admin actions:
+  - Unlock any locked user
+  - Set/clear a user's personal OpenRouter API key
+  - Approve/deny unlock requests
+  - View login logs with pagination
+  - View contact form messages
+
+5.5 USER PROFILE
+─────────────────
+  - /profile (login_required)
+  - Shows user's email + admin status
+  - Shows their personal API key (if admin has set one)
+
+================================================================================
+6.  CONTACT FORM
+================================================================================
+
+  - Public route: /contact (rate-limited: 3 per hour)
+  - Fields: name, email, subject, message
+  - Saved to ContactMessage table in DB
+  - Admin gets an email notification via SMTP (Gmail App Password)
+  - Admin can view messages at /admin/contact-messages
+  - Messages are auto-marked as read when viewed
+
+================================================================================
+7.  IN-MEMORY SESSION SYSTEM (Sync Player)
+================================================================================
+
+  - Two global dictionaries in app.py:
+    SESSION_STORE: sync_session_id → {words, text, duration, edited_text}
+    AUDIO_STORE:   sync_session_id → {audio_bytes, audio_format, mime_type, timestamp}
+  - Flask session cookie stores only the small sync_session_id string
+  - Audio is served directly from RAM via /session-audio/<id>
+  - Cleanup:
+    - Soft TTL: 2 hours (sessions older than 2h are removed)
+    - Hard TTL: 24 hours (if store exceeds 200 entries)
+    - Cleanup runs every 2 hours on next /transcribe-with-words request
+  - On server restart: all sessions are lost (client falls back to sessionStorage)
+
+================================================================================
+8.  SERVICES LAYER
+================================================================================
+
+8.1 TIMESTAMP ESTIMATOR (services/timestamp_estimator.py)
+───────────────────────────────────────────────────────────
+  - estimate_word_timestamps(text, duration_sec) → [{word, start, end, index}]
+    Algorithm:
+      1. Split text into tokens
+      2. Assign each token a weight = character count
+         - Sentence-ending punctuation (. ! ?) → weight × 1.5
+         - Clause punctuation (, ; :) → weight × 1.3
+      3. Distribute total duration proportionally by weight
+      4. Last word clamped to exact duration
+  - estimate_word_timestamps_chunked(full_text, segments, total_duration)
+    Same algorithm but per-chunk (uses each chunk's [start, end) range)
+
+8.2 WORD ALIGNER (services/word_aligner.py)
+─────────────────────────────────────────────
+  - align_edited_words(original_words, edited_text) → [{word, start, end, index, unchanged}]
+  - Uses Needleman-Wunsch sequence alignment algorithm
+    - Match: +2  |  Mismatch: -1  |  Gap penalty: -1
+    - Case-insensitive, punctuation-insensitive fuzzy matching
+  - Strategy:
+    - Matched words → keep original timestamps
+    - Inserted words → interpolate timestamps from nearest unchanged neighbors
+    - Deleted words → removed from final array
+
+================================================================================
+9.  SECURITY FEATURES
+================================================================================
+
+  - Rate limiting: 200 requests/day default, 5/min on login, 3/hr on register/contact
+  - CSRF protection on all forms (Flask-WTF)
+  - HTTP-only session cookies
+  - SameSite=Lax cookies
+  - Security headers middleware:
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: DENY
+    - X-XSS-Protection: 1; mode=block
+    - Strict-Transport-Security: max-age=31536000
+  - HTML minification middleware (preserves <script>/<pre> blocks)
+  - IP-based account locking (auto-lock on unrecognized IP)
+  - Passwords hashed with bcrypt
+  - Admin routes protected by decorators
+
+================================================================================
+10. CONFIGURATION (.env)
+================================================================================
+
+  OPENROUTER_API_KEY     # Required for AI transcription
+  SECRET_KEY              # Flask session secret (auto-generated if blank)
+  DATABASE_URL            # Default: sqlite:///app.db
+  MAIL_SERVER             # SMTP server (default: smtp.gmail.com)
+  MAIL_PORT               # SMTP port (default: 587)
+  MAIL_USE_TLS            # true/false
+  MAIL_USERNAME           # Gmail address for sending emails
+  MAIL_PASSWORD           # Gmail App Password (not regular password)
+  MAIL_DEFAULT_SENDER     # From address
+  SESSION_COOKIE_SECURE   # true for HTTPS
+  FLASK_DEBUG             # true/false
+  FLASK_HOST              # Bind address (default: 127.0.0.1)
+  FLASK_PORT              # Port (default: 5000)
+
+  Active API Key in .env:
+    [REDACTED - see .env file]
+
+================================================================================
+11. RUNNING THE APP
+================================================================================
+
+  Option A: PowerShell
+    .\run.ps1
+    (auto-creates venv, installs deps, checks ffmpeg, starts server)
+
+  Option B: CMD
+    start.bat
+    (same as above, for Windows Command Prompt)
+
+  Option C: Manual
+    pip install -r requirements.txt
+    python app.py
+
+  Server starts at: http://127.0.0.1:5000
+
+================================================================================
+12. DATABASE MODELS
+================================================================================
+
+  User
+  ────
+    id              Integer (PK)
+    email           String(255) unique, indexed
+    password_hash   String(255)
+    is_admin        Boolean (default: false)
+    is_locked       Boolean (default: false)
+    ip_address      String(45) — stored on first login
+    api_key         String(255) — personal OpenRouter key (set by admin)
+    created_at      DateTime
+    relationships: logs, unlock_requests, transcriptions
+
+  UnlockRequest
+  ─────────────
+    id              Integer (PK)
+    user_id         Integer (FK → users.id)
+    status          String(16) — pending | approved | denied
+    message         Text
+    admin_response  Text
+    created_at      DateTime
+
+  LoginLog
+  ────────
+    id              Integer (PK)
+    user_id         Integer (FK → users.id)
+    action          String(32) — login, logout, register, lock, unlock, etc.
+    ip_address      String(45)
+    details         Text
+    timestamp       DateTime (indexed)
+
+  ContactMessage
+  ──────────────
+    id              Integer (PK)
+    name            String(255)
+    email           String(255)
+    subject         String(255)
+    message         Text
+    is_read         Boolean (default: false)
+    created_at      DateTime
+
+  Transcription
+  ─────────────
+    id              Integer (PK)
+    user_id         Integer (FK → users.id, nullable)
+    audio_filename  String(255)
+    audio_duration  Float
+    words_json      Text (JSON array of word timestamps)
+    original_text   Text
+    edited_text     Text (nullable)
+    created_at      DateTime
+    updated_at      DateTime (auto-updates)
+
+================================================================================
+13. DESIGN SYSTEM (premium.css)
+================================================================================
+
+  - Dark theme (primary bg: #080818)
+  - Glassmorphism cards (blur + semi-transparent backgrounds)
+  - Animated gradient background overlay
+  - Playfair Display headings + Inter body text
+  - Violet/indigo accent palette (#8b5cf6, #6366f1)
+  - Fade-in animations, hover micro-interactions
+  - Custom scrollbar, selection styling
+  - Complete component library:
+    Navigation bar (sticky, glass effect)
+    Cards (with reflection line)
+    Buttons (primary gradient with shimmer, outline, ghost, danger, success)
+    Form inputs (with focus glow)
+    Tables (with row hover)
+    Badges (colored with pulse dots)
+    Flash messages (slide-in animation)
+    Stats grid (admin dashboard)
+    Drop zone (drag & drop with visual feedback)
+    Sync player controls (play button, seek bar, waveform bars)
+  - Responsive breakpoints for mobile
+
+================================================================================
+14. OPENROUTER API INTEGRATION
+================================================================================
+
+  Endpoint:     https://openrouter.ai/api/v1/chat/completions
+  Model:        google/gemini-3.1-flash-lite (hardcoded)
+  Auth:         Bearer token in Authorization header
+  Payload:
+    {
+      "model": "google/gemini-3.1-flash-lite",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {"type": "text", "text": TRANSCRIPTION_PROMPT},
+            {
+              "type": "input_audio",
+              "input_audio": {"data": "<base64 audio>", "format": "mp3"}
+            }
+          ]
+        }
+      ]
+    }
+  Transcription Prompt: Bengali speech-to-text system prompt
+  Timeout: 300 seconds per request
+
+================================================================================
+15. KEY INTEGRATIONS & DEPENDENCIES
+================================================================================
+
+  flask>=3.0              # Web framework
+  python-dotenv>=1.0      # .env loading
+  requests>=2.31         # HTTP client for OpenRouter API
+  flask-sqlalchemy>=3.0  # ORM
+  flask-login>=0.6       # Session-based user auth
+  flask-bcrypt>=1.0      # Password hashing
+  flask-limiter>=3.0     # Rate limiting
+  flask-wtf>=1.0         # CSRF protection
+  flask-mail>=0.9.1      # Email sending (SMTP)
+  ffmpeg                 # Audio processing (chunking, duration detection)
+
+================================================================================
+     │─────────────────────>│                        │                  │          │
+     │                      │  timeupdate event      │                  │          │
+     │                      │  → binary search       │                  │          │
+     │                      │  → highlight word      │                  │          │
+     │                      │  → scroll into view    │                  │          │
+     │  Word highlights     │                        │                  │          │
+     │<─────────────────────│                        │                  │          │
+     │                      │                        │                  │          │
+     │  Click word          │                        │                  │          │
+     │─────────────────────>│                        │                  │          │
+     │                      │  audio.currentTime =   │                  │          │
+     │                      │  word.start            │                  │          │
+     │  Audio jumps         │                        │                  │          │
+     │<─────────────────────│                        │                  │          │
+     │                      │                        │                  │          │
+     │  Click "Edit"        │                        │                  │          │
+     │─────────────────────>│                        │                  │          │
+     │  Edit text           │                        │                  │          │
+     │─────────────────────>│                        │                  │          │
+     │  Click "Save"        │                        │                  │          │
+     │─────────────────────>│                        │                  │          │
+     │                      │  PUT /api/transcrip-   │                  │          │
+     │                      │  tions/1               │                  │          │
+     │                      │  {edited_text: "..."}  │                  │          │
+     │                      │───────────────────────>│                  │          │
+     │                      │                        │                  │          │
+     │                      │                        │  align_edited_   │          │
+     │                      │                        │  words()         │          │
+     │                      │                        │  ────────────────│          │
+     │                      │                        │                  │          │
+     │                      │                        │  Save to DB      │          │
+     │                      │                        │  ────────────────│          │
+     │                      │                        │                  │          │
+     │                      │  {"words": [...],      │                  │          │
+     │                      │   "success": true}     │                  │          │
+     │                      │<───────────────────────│                  │          │
+     │                      │                        │                  │          │
+     │  Transcript updated  │  Re-render word spans  │                  │          │
+     │<─────────────────────│                        │                  │          │
+
+
+================================================================================
+  9. API ENDPOINT REFERENCE
+================================================================================
+
+  ┌───────────────────────────────────────────────────────────────────────────┐
+  │  Endpoint                    Method  Purpose                Auth Needed  │
+  ├───────────────────────────────────────────────────────────────────────────┤
+  │  /                           GET     Home page              No           │
+  │  /transcribe                 POST    Basic transcription   API Key/None  │
+  │  /transcribe-with-words      POST    Transcribe + sync     API Key/None  │
+  │  /player/<id>                GET     Sync player page      No           │
+  │  /api/transcriptions/<id>    GET     Get word data (JSON)  No           │
+  │  /api/transcriptions/<id>    PUT     Save edited text      No           │
+  │  /uploads/<filename>         GET     Serve audio file      No           │
+  │  /login                      GET/POST Login page           No           │
+  │  /register                   GET/POST Registration         No           │
+  │  /logout                     GET     Logout                Yes          │
+  │  /contact                    GET/POST Contact form         No           │
+  │  /profile                    GET     User profile          Yes          │
+  │  /admin/dashboard            GET     Admin dashboard       Admin        │
+  │  /admin/users                GET     User management       Admin        │
+  │  /admin/logs                 GET     Activity logs         Admin        │
+  │  /admin/contact-messages     GET     Contact submissions   Admin        │
+  │  /admin/unlock-requests      GET     Unlock requests       Admin        │
+  └───────────────────────────────────────────────────────────────────────────┘
+
+  Detailed Endpoint: POST /transcribe-with-words
+  ────────────────────────────────────────────────────────────────────────────
+  Request:
+    Headers:   X-API-Key: (optional, user's OpenRouter key)
+    Body:      multipart/form-data with "file" (audio file)
+
+  Success Response (200):
+    {
+      "id": 1,
+      "words": [
+        {"word": "Hello", "start": 0.0, "end": 0.32, "index": 0},
+        {"word": "world", "start": 0.32, "end": 0.65, "index": 1}
+      ],
+      "text": "Hello world this is a test.",
+      "duration": 3.0,
+      "audio_url": "/uploads/audio_abc123.mp3"
+    }
+
+  Error Responses:
+    400: {"error": "No audio file provided"}
+    400: {"error": "Could not determine audio duration."}
+    500: {"error": "Server API key not configured"}
+    502: {"error": "Transcription service error: HTTP 429 ..."}
+
+  Detailed Endpoint: PUT /api/transcriptions/<id>
+  ────────────────────────────────────────────────────────────────────────────
+  Request:
+    Headers:   Content-Type: application/json
+    Body:      {"edited_text": "Hello world this is the corrected test."}
+
+  Success Response (200):
+    {
+      "id": 1,
+      "words": [
+        {"word": "Hello", "start": 0.0, "end": 0.32, "index": 0},
+        {"word": "world", "start": 0.32, "end": 0.65, "index": 1},
+        ...
+      ],
+      "text": "Hello world this is the corrected test.",
+      "success": true
+    }
+
+  Error Responses:
+    400: {"error": "Edited text cannot be empty"}
+    404: {"error": "Transcription not found"}
+
+
+================================================================================
+  10. FRONTEND COMPONENTS
+================================================================================
+
+  10.1 Home Page (index.html)
+  ────────────────────────────────────────────────────────────────────────────
+  Layout:
+    - Header: BM Transcriber title + subtitle
+    - Drop Zone: Drag & drop or click to browse audio files
+    - File info: Shows selected filename and size
+    - Two buttons:
+      → "Transcribe" → basic transcription (plain text output)
+      → "Transcribe & Sync" → sync player (redirects to /player/<id>)
+    - Result area: Shows transcription text with Copy and Open Sync Player
+
+  10.2 Sync Player Page (player.html)
+  ────────────────────────────────────────────────────────────────────────────
+  Layout:
+    - Header: Title, duration, back link
+    - Audio Card:
+      → Play/Pause button (circular gradient)
+      → Seek bar (clickable progress track with violet gradient)
+      → Time display (current / total)
+      → Speed selector (0.5× to 2×)
+      → Waveform bars (visual progress indicator)
+    - Transcript Card:
+      → Toolbar: "Edit", "Save" (hidden), "Cancel" (hidden), "Reset"
+      → Scrollable transcript with word spans
+      → Footer: word count + sync status indicator
+
+  10.3 CSS Word States
+  ────────────────────────────────────────────────────────────────────────────
+  .sync-word              Base: inline, pointer cursor, smooth transition
+  .sync-word-future       Not yet spoken: bright white text
+  .sync-word-played       Already spoken: muted gray, 0.6 opacity
+  .sync-word-active       Currently spoken: violet gradient bg, white text,
+                           scale(1.05), box-shadow glow
+  .sync-word:hover        (non-edit): subtle violet background
+
+  .sync-editing           Edit mode: all highlights removed, text cursor
+
+  10.4 JavaScript Sync Engine (sync-player.js)
+  ────────────────────────────────────────────────────────────────────────────
+  Class/Module: IIFE (Immediately Invoked Function Expression)
+
+  Key Functions:
+    init()
+      → Fetch transcription data from /api/transcriptions/<id>
+      → Set up audio element
+      → Call renderWords()
+      → Wire all event listeners
+
+    renderWords()
+      → Loop through words array
+      → Create <span> for each word with data-index, data-start, data-end
+      → Add click handler for seekToWord()
+      → Append to DOM with spaces between words
+
+    findActiveWord(time)
+      → Binary search on sorted words array
+      → Returns index of word whose [start, end) contains currentTime
+      → Gap filler: returns nearest word if between words
+
+    onTimeUpdate()
+      → Called via requestAnimationFrame throttle
+      → Calls findActiveWord()
+      → If word changed: call highlightWord() + scrollToWord()
+
+    highlightWord(index)
+      → Update all spans: add played/active/future classes
+
+    scrollToWord(index)
+      → element.scrollIntoView({ behavior: "smooth", block: "center" })
+
+    seekToWord(index)
+      → audio.currentTime = words[index].start
+
+    enterEditMode() / exitEditMode()
+      → Toggle contentEditable
+      → Show/hide Save/Cancel buttons
+
+    saveEdits()
+      → Read innerText from transcript container
+      → PUT to /api/transcriptions/<id>
+      → Receive realigned words
+      → Re-render word spans
+
+    cancelEdit()
+      → Restore original text
+      → Re-render word spans
+
+    resetTranscript()
+      → Fetch original from API
+      → Re-render
+
+  Event Listeners:
+    audio.timeupdate    → onTimeUpdate (throttled via rAF)
+    audio.play          → update play button icon, status
+    audio.pause         → update play button icon, status
+    audio.ended         → update status to "Finished"
+    audio.loadedmetadata → update time display
+    seekBar.click       → seek to click ratio
+    speedSelect.change  → audio.playbackRate = value
+    playBtn.click       → toggle play/pause
+    editBtn.click       → enterEditMode
+    saveBtn.click       → saveEdits
+    cancelBtn.click     → cancelEdit
+    resetBtn.click      → resetTranscript
+    document.keydown    → Space: play/pause, ArrowLeft/Right: ±5s
+
+
+================================================================================
+  11. ERROR HANDLING
+================================================================================
+
+  Scenario                           Handling
+  ──────────────────────────────────────────────────────────────────────────
+  No audio file provided             Return 400 error
+  No API key configured              Return 500 error
+  Transcription service fails        Return 502 error with message
+  Audio file corrupted               Return 400 error
+  FFmpeg not available for chunking  Return 400 error
+  Transcription not found            Return 404, show error on player page
+  Edited text empty                  Return 400 error
+  Audio format unsupported           Browser handles natively
+  Network error during transcribe    Frontend shows "Network error" message
+  Rapid seeking                      Debounce via requestAnimationFrame
+  Editing during playback            Sync continues, re-renders after save
+
+
+================================================================================
+  12. SECURITY
+================================================================================
+
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │  MEASURE                   IMPLEMENTATION                             │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │  Password Hashing           Flask-Bcrypt (bcrypt algorithm)           │
+  │  Session Management        Flask-Login (signed cookies)               │
+  │  CSRF Protection           Flask-WTF / CSRFProtect                    │
+  │  Rate Limiting             Flask-Limiter (200 requests/day default)   │
+  │  Security Headers          X-Content-Type-Options: nosniff            │
+  │                            X-Frame-Options: DENY                      │
+  │                            X-XSS-Protection: 1; mode=block           │
+  │                            Strict-Transport-Security: max-age=31536000│
+  │  API Key Handling          User can supply via X-API-Key header       │
+  │                            Server fallback via OPENROUTER_API_KEY env │
+  │  File Upload Safety        UUID-based filenames (no path traversal)   │
+  │  SQL Injection             Prevented by SQLAlchemy ORM                │
+  │  XSS                       Jinja2 auto-escapes template variables     │
+  │  Environment Variables     .env file with secrets (gitignored)        │
+  │  Audio File Storage        uploads/ directory (gitignored)            │
+  └────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+  END OF DOCUMENT
+================================================================================

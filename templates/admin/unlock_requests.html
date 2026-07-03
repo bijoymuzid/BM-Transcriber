@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Unlock Requests — Admin{% endblock %}
+{% block content %}
+
+<h1 class="premium-heading-md premium-fade-in">Unlock Requests</h1>
+
+<!-- Pending Requests -->
+<h2 class="premium-section-title gold premium-fade-in premium-fade-in-delay-1">Pending Requests ({{ pending|length }})</h2>
+
+{% if pending %}
+<div class="premium-table-wrapper premium-fade-in premium-fade-in-delay-2" style="margin-bottom:2rem">
+<table class="premium-table">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Submitted</th>
+      <th>Message</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for req in pending %}
+    <tr>
+      <td>{{ req.user.email }}</td>
+      <td class="cell-muted" style="font-size:0.8rem">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="cell-muted" style="font-size:0.82rem;max-width:250px">{{ req.message[:150] }}</td>
+      <td>
+        <div class="premium-flex premium-flex-gap">
+          <form method="POST" action="{{ url_for('auth.admin_approve_unlock', request_id=req.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="premium-btn premium-btn-success premium-btn-sm">Approve</button>
+          </form>
+          <form method="POST" action="{{ url_for('auth.admin_deny_unlock', request_id=req.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="premium-btn premium-btn-danger premium-btn-sm">Deny</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="premium-card premium-card-sm premium-text-muted premium-fade-in premium-fade-in-delay-2" style="margin-bottom:2rem">
+  No pending unlock requests.
+</div>
+{% endif %}
+
+<!-- History Section -->
+<h2 class="premium-section-title muted premium-fade-in premium-fade-in-delay-3">History (last 50)</h2>
+
+{% if history %}
+<div class="premium-table-wrapper premium-fade-in premium-fade-in-delay-3">
+<table class="premium-table">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Status</th>
+      <th>Date</th>
+      <th>Admin Response</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for req in history %}
+    <tr>
+      <td>{{ req.user.email }}</td>
+      <td>
+        {% if req.status == 'approved' %}
+        <span class="premium-badge premium-badge-emerald"><span class="status-dot green"></span> Approved</span>
+        {% else %}
+        <span class="premium-badge premium-badge-red"><span class="status-dot red"></span> Denied</span>
+        {% endif %}
+      </td>
+      <td class="cell-muted" style="font-size:0.8rem">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="cell-muted" style="font-size:0.82rem">{{ req.admin_response or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="premium-card premium-card-sm premium-text-muted premium-fade-in premium-fade-in-delay-3">
+  No history yet.
+</div>
+{% endif %}
+
+<div class="premium-mt-lg">
+  <a href="{{ url_for('auth.admin_dashboard') }}" class="premium-back-link">&larr; Back to Dashboard</a>
+</div>
+
+{% endblock %}

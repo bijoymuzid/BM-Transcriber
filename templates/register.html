@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Register — BM Transcriber{% endblock %}
+{% block content %}
+<div class="premium-form-card premium-fade-in">
+  <div class="premium-card premium-card-glow" style="padding:2rem">
+    <h1 class="premium-heading-md" style="text-align:center;margin-bottom:1.5rem">Create Account</h1>
+    <form method="POST" action="{{ url_for('auth.register') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="premium-form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="email" class="premium-input" placeholder="you@example.com">
+      </div>
+      <div class="premium-form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" class="premium-input" placeholder="••••••••">
+        <span class="premium-input-help">Minimum 8 characters</span>
+      </div>
+      <div class="premium-form-group">
+        <label for="confirm_password">Confirm Password</label>
+        <input type="password" id="confirm_password" name="confirm_password" required minlength="8" autocomplete="new-password" class="premium-input" placeholder="••••••••">
+      </div>
+      <button type="submit" class="premium-btn premium-btn-primary premium-btn-block" style="margin-top:0.5rem">Register</button>
+    </form>
+    <p class="premium-text-muted premium-text-center" style="margin-top:1.25rem;font-size:0.85rem">
+      Already have an account? <a href="{{ url_for('auth.login') }}" style="color:var(--p-text-accent);text-decoration:none;font-weight:600">Log in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

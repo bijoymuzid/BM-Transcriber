@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}BM Transcriber — Sync Player{% endblock %}
+{% block extra_head %}
+<style>
+  /* Page-specific overrides for the sync player */
+  .sync-container { max-width: 800px; margin: 0 auto; }
+  .sync-audio-card { margin-bottom: 1.5rem; }
+  .sync-error { text-align: center; padding: 4rem 1rem; }
+  .sync-error h2 { color: #fca5a5; margin-bottom: 1rem; }
+  .sync-loading { text-align: center; padding: 3rem 1rem; color: var(--p-text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sync-container">
+
+  <header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <div>
+      <h1 class="premium-heading-lg" style="margin-bottom:0">🎧 Sync Player</h1>
+      <p class="premium-text-muted" style="font-size:0.85rem">
+        {{ duration | round(1) }}s &middot;
+        <a href="/" style="color:var(--p-text-accent)">← Back to home</a>
+      </p>
+    </div>
+  </header>
+
+  {% if error %}
+    <div class="sync-error premium-card">
+      <h2>⚠️ {{ error }}</h2>
+      <p class="premium-text-muted">The transcription you're looking for could not be found.</p>
+      <a href="/" class="premium-btn premium-btn-primary" style="margin-top:1rem">Upload again</a>
+    </div>
+  {% else %}
+
+  <!-- Loading state -->
+  <div id="sync-loading" class="sync-loading premium-card">
+    <div style="font-size:2rem;margin-bottom:1rem">⏳</div>
+    <p>Loading transcription data…</p>
+  </div>
+
+  <!-- Audio Player Card -->
+  <div id="sync-audio-card" class="premium-card sync-audio-card" style="display:none">
+    <span class="card-label">Audio Player</span>
+
+    <audio id="sync-audio" preload="auto" style="width:100%;display:none"></audio>
+
+    <!-- Custom controls -->
+    <div class="sync-controls">
+      <button id="play-btn" class="sync-play-btn" aria-label="Play/Pause">
+        <span class="play-icon">▶</span>
+        <span class="pause-icon" style="display:none">⏸</span>
+      </button>
+
+      <div class="sync-seek-bar" id="seek-bar">
+        <div class="sync-seek-track">
+          <div class="sync-seek-progress" id="seek-progress"></div>
+          <div class="sync-seek-thumb" id="seek-thumb"></div>
+        </div>
+      </div>
+
+      <span class="sync-time" id="time-display">0:00 / 0:00</span>
+
+      <select id="speed-select" class="sync-speed-select" aria-label="Playback speed">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+
+    <!-- Waveform-style progress indicator -->
+    <div class="sync-wave-progress" id="wave-progress">
+      {% for i in range(80) %}
+        <span class="sync-wave-bar" data-index="{{ i }}"></span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Transcript Card -->
+  <div id="sync-transcript-card" class="premium-card premium-card-glow" style="display:none">
+    <div class="sync-transcript-toolbar">
+      <span class="card-label" style="margin-bottom:0">Transcript</span>
+      <div class="sync-toolbar-actions">
+        <button id="copy-player-btn" class="premium-btn premium-btn-ghost premium-btn-sm">📋 Copy</button>
+        <button id="edit-btn" class="premium-btn premium-btn-ghost premium-btn-sm">✏️ Edit</button>
+        <button id="save-btn" class="premium-btn premium-btn-success premium-btn-sm" style="display:none">💾 Save</button>
+        <button id="cancel-btn" class="premium-btn premium-btn-ghost premium-btn-sm" style="display:none">Cancel</button>
+        <button id="reset-btn" class="premium-btn premium-btn-ghost premium-btn-sm" title="Reset to original">↺</button>
+      </div>
+    </div>
+
+    <div class="sync-transcript-container" id="transcript-container"
+         data-sync-session-id="{{ sync_session_id }}"
+         data-audio-url="{{ audio_url }}">
+      <div class="sync-transcript" id="transcript-content"></div>
+    </div>
+
+    <div class="sync-transcript-footer">
+      <span class="sync-word-count" id="word-count"></span>
+      <span class="sync-status" id="sync-status">⏹ Stopped</span>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/sync-player.js') }}"></script>
+{% endblock %}

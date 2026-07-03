@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}My Profile — BM Transcriber{% endblock %}
+{% block content %}
+
+<div class="premium-form-card premium-fade-in" style="max-width:520px;margin:0 auto">
+  <div class="premium-card premium-card-glow" style="padding:2rem">
+    <h1 class="premium-heading-md" style="text-align:center;margin-bottom:1.5rem">My Profile</h1>
+
+    <div style="margin-bottom:1.25rem">
+      <div style="font-size:0.8rem;color:var(--p-text-secondary);margin-bottom:0.25rem">Email</div>
+      <div style="font-weight:600;word-break:break-all">{{ current_user.email }}</div>
+    </div>
+
+    <div style="margin-bottom:1.25rem">
+      <div style="font-size:0.8rem;color:var(--p-text-secondary);margin-bottom:0.25rem">Account Type</div>
+      <div>
+        {% if current_user.is_admin %}
+        <span class="premium-badge premium-badge-violet">Admin</span>
+        {% else %}
+        <span class="premium-badge premium-badge-emerald">Member</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div style="margin-bottom:1.5rem">
+      <div style="font-size:0.8rem;color:var(--p-text-secondary);margin-bottom:0.25rem">Your API Key</div>
+      {% if current_user.api_key %}
+      <div id="api-key-wrapper" style="position:relative;display:flex;align-items:center;gap:6px;background:var(--p-bg-secondary,#1a1a2e);border:1px solid var(--p-border,#2d2d4e);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:0.82rem;word-break:break-all">
+        <span id="api-key-text">{{ current_user.api_key[:16] }}...{{ current_user.api_key[-6:] }}</span>
+        <span id="api-key-full" style="display:none">{{ current_user.api_key }}</span>
+        <div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">
+          <button onclick="toggleApiKey()" id="toggle-btn" class="premium-btn premium-btn-sm" style="font-size:0.7rem;padding:3px 8px" title="Reveal / Hide">👁️</button>
+          <button onclick="copyApiKey()" id="copy-btn" class="premium-btn premium-btn-sm" style="font-size:0.7rem;padding:3px 8px" title="Copy API key">📋 Copy</button>
+        </div>
+      </div>
+      <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--p-text-secondary)">
+        Send this key via the <code style="background:var(--p-bg-secondary,#1a1a2e);padding:1px 4px;border-radius:3px">X-API-Key</code> header when making transcription requests.
+      </div>
+      {% else %}
+      <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px;color:var(--p-text-secondary);font-size:0.85rem">
+        No API key assigned yet. Contact an administrator to get your API key.
+      </div>
+      {% endif %}
+    </div>
+
+    <div style="text-align:center">
+      <a href="/" class="premium-btn premium-btn-primary">&larr; Back to Home</a>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleApiKey() {
+  const masked = document.getElementById('api-key-text');
+  const full = document.getElementById('api-key-full');
+  const btn = document.getElementById('toggle-btn');
+  if (full.style.display === 'none') {
+    masked.style.display = 'none';
+    full.style.display = 'inline';
+    btn.textContent = '🙈';
+  } else {
+    masked.style.display = 'inline';
+    full.style.display = 'none';
+    btn.textContent = '👁️';
+  }
+}
+
+function copyApiKey() {
+  const full = document.getElementById('api-key-full');
+  const text = full.textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = '✅ Copied!';
+    setTimeout(function() { btn.textContent = '📋 Copy'; }, 2000);
+  }).catch(function() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = '✅ Copied!';
+    setTimeout(function() { btn.textContent = '📋 Copy'; }, 2000);
+  });
+}
+</script>
+
+{% endblock %}
