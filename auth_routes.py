@@ -34,7 +34,7 @@ csrf = CSRFProtect()
 auth_bp = Blueprint("auth", __name__, url_prefix="")
 
 # Hardcoded admin email — only this email gets admin role
-ADMIN_EMAIL = "niabijoy123@gmail.com"
+ADMIN_EMAIL = ""
 
 
 # ---------------------------------------------------------------------------
